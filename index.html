@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PDF ฟอร์มง่าย</title>
+<meta name="theme-color" content="#2557d6">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/app.css">
+<script src="vendor/pdf-lib.min.js"></script>
+<script src="vendor/fontkit.umd.min.js"></script>
+<script src="vendor/fflate.umd.js"></script>
+</head>
+<body class="no-doc mode-design">
+
+<header class="topbar">
+  <button class="icon-btn" id="btnHome" title="หน้าแรก" data-icon="home"></button>
+  <div class="brand">PDF <b>ฟอร์มง่าย</b></div>
+  <input id="docName" class="doc-name" spellcheck="false" aria-label="ชื่อเอกสาร">
+  <span id="saveState" class="save-state"></span>
+  <div class="spacer"></div>
+  <div class="seg doc-only" id="modeSeg" role="tablist">
+    <button data-mode="design" data-icon="pen"><span>ออกแบบช่อง</span></button>
+    <button data-mode="fill" data-icon="type"><span>กรอกข้อมูล</span></button>
+  </div>
+  <div class="grp doc-only hide-sm">
+    <button class="icon-btn" id="btnUndo" title="ย้อนกลับ (Ctrl+Z)" data-icon="undo"></button>
+    <button class="icon-btn" id="btnRedo" title="ทำซ้ำ (Ctrl+Y)" data-icon="redo"></button>
+  </div>
+  <div class="grp doc-only zoom hide-sm">
+    <button class="icon-btn" id="btnZoomOut" title="ย่อ" data-icon="minus"></button>
+    <button class="zoom-label" id="zoomLabel" title="พอดีความกว้าง">100%</button>
+    <button class="icon-btn" id="btnZoomIn" title="ขยาย" data-icon="plus"></button>
+  </div>
+  <button class="btn primary doc-only" id="btnExport" data-icon="download"><span>ส่งออก PDF</span></button>
+  <button class="icon-btn doc-only" id="btnMore" title="เมนู" data-icon="menu"></button>
+</header>
+
+<main class="workspace">
+  <nav id="toolbar" class="toolbar doc-only" aria-label="เครื่องมือ"></nav>
+  <div id="viewer" class="viewer doc-only">
+    <div id="pages" class="pages"></div>
+  </div>
+  <aside id="panel" class="panel doc-only">
+    <div class="sheet-grip" id="sheetGrip"></div>
+    <div id="panelBody" class="panel-body"></div>
+  </aside>
+  <button id="fabPanel" class="fab doc-only" data-icon="list"><span>รายการ</span></button>
+
+  <section id="home" class="home">
+    <div class="home-inner">
+      <h1>เปิด PDF แล้ววางช่องกรอกได้ในไม่กี่คลิก</h1>
+      <p class="muted">ไฟล์อยู่ในเครื่องคุณเท่านั้น · ใช้งานออฟไลน์ได้ · รองรับภาษาไทยเต็มรูปแบบ</p>
+      <label class="drop" id="drop">
+        <input type="file" id="fileInput" accept="application/pdf,.pdf" hidden>
+        <span class="drop-icon" data-icon="upload"></span>
+        <strong>ลากไฟล์ PDF มาวางที่นี่</strong>
+        <span class="muted">หรือแตะเพื่อเลือกไฟล์</span>
+      </label>
+      <div id="recent" class="recent"></div>
+    </div>
+  </section>
+</main>
+
+<div id="toasts" class="toasts" aria-live="polite"></div>
+<input type="file" id="jsonInput" accept="application/json,.json" hidden>
+<input type="file" id="csvInput" accept=".csv,.tsv,text/csv,text/tab-separated-values" hidden>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

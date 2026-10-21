@@ -1,0 +1,20 @@
+{
+  "name": "pdf-form-easy",
+  "version": "1.0.0",
+  "description": "PDF ฟอร์มง่าย — วางช่องกรอกบน PDF",
+  "scripts": {
+    "start": "node serve.js",
+    "sample": "node samples/make-sample.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@pdf-lib/fontkit": "^1.1.1",
+    "fflate": "^0.8.2",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^4.10.38"
+  },
+  "private": true
+}
