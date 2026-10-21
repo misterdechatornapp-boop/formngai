@@ -16,8 +16,15 @@ function db() {
       d.createObjectStore('files', { keyPath: 'id' });
       d.createObjectStore('kv', { keyPath: 'key' });
     };
-    r.onsuccess = () => resolve(r.result);
-    r.onerror = () => reject(r.error);
+    r.onsuccess = () => {
+      const d = r.result;
+      // มีการลบ/อัปเกรดฐานข้อมูลจากที่อื่น (แท็บอื่น, เวอร์ชันใหม่) → ปล่อยการเชื่อมต่อ ไม่ให้ค้าง แล้วเปิดใหม่ครั้งถัดไป
+      d.onversionchange = () => { d.close(); dbp = null; };
+      d.onclose = () => { dbp = null; };
+      resolve(d);
+    };
+    r.onerror = () => { dbp = null; reject(r.error); };
+    r.onblocked = () => console.warn('IndexedDB ถูกแท็บอื่นของแอปนี้ใช้อยู่ — ปิดแท็บอื่นแล้วลองใหม่');
   });
   return dbp;
 }
