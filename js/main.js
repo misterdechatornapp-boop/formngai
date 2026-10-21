@@ -11,6 +11,7 @@ import { parseDelimited, autoMap, truthy, fetchGoogleSheet } from './merge.js';
 import { buildPdf, concatPdfs, displayText } from './exporter.js';
 import { openSignatureDialog } from './sigpad.js';
 import { computeAll, parseFormula, NUM_FORMATS, FUNC_NAMES } from './formula.js';
+import { initPageTool, addPageFiles } from './pages.js';
 import { findCandidates, nameCandidates, pageText, AUTO_COLORS, BRUSHES, BRUSH_CODE } from './auto.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('../vendor/pdf.worker.min.mjs', import.meta.url).href;
@@ -93,6 +94,21 @@ async function showHome() {
   closeDoc();
   document.body.classList.add('no-doc');
   renderRecent();
+}
+
+// ---------- เมนูด้านข้างหน้าแรก: งานฟอร์ม | จัดการหน้า PDF ----------
+function setHomeView(v) {
+  S.homeView = v === 'pages' ? 'pages' : 'forms';
+  try { localStorage.setItem('pfe-homeView', S.homeView); } catch (e) { /* ignore */ }
+  $$('#sideNav [data-view]').forEach((b) => b.classList.toggle('on', b.dataset.view === S.homeView));
+  $$('#home [data-pane]').forEach((el) => { el.hidden = el.dataset.pane !== S.homeView; });
+  if (S.homeView === 'pages') {
+    initPageTool($('#pageTool'), {
+      pdfOpts: PDFJS_OPTS,
+      openInForm: (bytes, name) => openBytes(bytes, name, false),
+    });
+  }
+  document.querySelector('.home-main')?.scrollTo(0, 0);
 }
 
 // ======================================================================
@@ -2498,6 +2514,8 @@ function bindUI() {
   ['dragleave', 'drop'].forEach((ev) => document.addEventListener(ev, (e) => { e.preventDefault(); if (ev === 'drop' || e.target === document.documentElement) drop.classList.remove('over'); }));
   document.addEventListener('drop', (e) => {
     const f = [...(e.dataTransfer?.files || [])];
+    // อยู่หน้า "จัดการหน้า PDF" → ไฟล์ที่วางลงตรงไหนก็เพิ่มเข้าเครื่องมือนี้
+    if (!S.doc && S.homeView === 'pages') { addPageFiles(f); return; }
     const pdf = f.find((x) => /pdf$/i.test(x.type) || /\.pdf$/i.test(x.name));
     const json = f.find((x) => /\.json$/i.test(x.name));
     const csv = f.find((x) => /\.(csv|tsv)$/i.test(x.name));
@@ -2507,6 +2525,7 @@ function bindUI() {
   });
 
   $('#btnHome').onclick = showHome;
+  $$('#sideNav [data-view]').forEach((b) => b.onclick = () => setHomeView(b.dataset.view));
   $('#docName').onchange = (e) => { if (!S.doc) return; S.doc.name = e.target.value.trim() || S.doc.name; e.target.value = S.doc.name; scheduleSave(); };
   $$('#modeSeg button').forEach((b) => b.onclick = () => setMode(b.dataset.mode));
   $('#btnUndo').onclick = undo;
@@ -2609,6 +2628,7 @@ Store.get('presets').then((p) => { if (Array.isArray(p) && p.length) { S.presets
 let fontRedraw = null;
 onFontLoaded(() => { clearTimeout(fontRedraw); fontRedraw = setTimeout(() => { if (S.doc) { renderAllFields(); if (S.editor) positionEditor(); } }, 30); });
 renderRecent();
+setHomeView((() => { try { return localStorage.getItem('pfe-homeView'); } catch (e) { return null; } })());
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
   navigator.serviceWorker.register('sw.js').catch((e) => console.warn('sw', e));
 }

@@ -49,6 +49,13 @@ const P = {
   image: 'M4 5h16v14H4z M4 16l5-5 4 4 3-3 4 4 M15.5 9.5h.01',
   tag: 'M3 12V4h8l10 10-8 8z M7.5 7.5h.01',
   info: 'M12 3a9 9 0 100 18 9 9 0 000-18z M12 11v6 M12 7.5h.01',
+  rotl: 'M4 4v5h5 M4.6 9A8 8 0 1 1 6 16.5',
+  rotr: 'M20 4v5h-5 M19.4 9A8 8 0 1 0 18 16.5',
+  scissors: 'M6 4a2.5 2.5 0 100 5 2.5 2.5 0 000-5z M6 15a2.5 2.5 0 100 5 2.5 2.5 0 000-5z M8.2 7.8L20 18 M8.2 16.2L20 6',
+  zip: 'M6 3h9l4 4v14H6z M11 3v2 M11 7v2 M11 11v2 M10 15h2v3h-2z',
+  page: 'M6 3h9l4 4v14H6z M15 3v4h4',
+  left2: 'M14 6l-6 6 6 6',
+  right2: 'M10 6l6 6-6 6',
 };
 
 export function icon(name, cls = '') {

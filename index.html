@@ -17,8 +17,8 @@
 <header class="topbar">
   <button class="icon-btn" id="btnHome" title="หน้าแรก" data-icon="home"></button>
   <div class="brand">PDF <b>ฟอร์มง่าย</b></div>
-  <input id="docName" class="doc-name" spellcheck="false" aria-label="ชื่อเอกสาร">
-  <span id="saveState" class="save-state"></span>
+  <input id="docName" class="doc-name doc-only" spellcheck="false" aria-label="ชื่อเอกสาร">
+  <span id="saveState" class="save-state doc-only"></span>
   <div class="spacer"></div>
   <div class="seg doc-only" id="modeSeg" role="tablist">
     <button data-mode="design" data-icon="pen"><span>ออกแบบช่อง</span></button>
@@ -49,16 +49,24 @@
   <button id="fabPanel" class="fab doc-only" data-icon="list"><span>รายการ</span></button>
 
   <section id="home" class="home">
-    <div class="home-inner">
-      <h1>เปิด PDF แล้ววางช่องกรอกได้ในไม่กี่คลิก</h1>
-      <p class="muted">ไฟล์อยู่ในเครื่องคุณเท่านั้น · ใช้งานออฟไลน์ได้ · รองรับภาษาไทยเต็มรูปแบบ</p>
-      <label class="drop" id="drop">
-        <input type="file" id="fileInput" accept="application/pdf,.pdf" hidden>
-        <span class="drop-icon" data-icon="upload"></span>
-        <strong>ลากไฟล์ PDF มาวางที่นี่</strong>
-        <span class="muted">หรือแตะเพื่อเลือกไฟล์</span>
-      </label>
-      <div id="recent" class="recent"></div>
+    <nav class="side-nav" id="sideNav" aria-label="เมนูหลัก">
+      <button data-view="forms" data-icon="file"><span>งานฟอร์ม</span></button>
+      <button data-view="pages" data-icon="grid"><span>จัดการหน้า PDF</span></button>
+      <div class="side-foot muted">ไฟล์อยู่ในเครื่องคุณเท่านั้น</div>
+    </nav>
+    <div class="home-main">
+      <div class="home-inner" data-pane="forms">
+        <h1>เปิด PDF แล้ววางช่องกรอกได้ในไม่กี่คลิก</h1>
+        <p class="muted">ไฟล์อยู่ในเครื่องคุณเท่านั้น · ใช้งานออฟไลน์ได้ · รองรับภาษาไทยเต็มรูปแบบ</p>
+        <label class="drop" id="drop">
+          <input type="file" id="fileInput" accept="application/pdf,.pdf" hidden>
+          <span class="drop-icon" data-icon="upload"></span>
+          <strong>ลากไฟล์ PDF มาวางที่นี่</strong>
+          <span class="muted">หรือแตะเพื่อเลือกไฟล์</span>
+        </label>
+        <div id="recent" class="recent"></div>
+      </div>
+      <div class="pt-pane" data-pane="pages" id="pageTool" hidden></div>
     </div>
   </section>
 </main>

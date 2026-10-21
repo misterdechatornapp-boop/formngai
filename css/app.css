@@ -425,3 +425,61 @@ body.picking .fld:hover { outline: 2px dashed var(--accent) !important; outline-
 body.picking .overlay { cursor: default; }
 .fx-readonly { display: flex; gap: 8px; align-items: center; padding: 6px 10px; border-radius: 8px; background: var(--surface-2); font-variant-numeric: tabular-nums; }
 .fx-readonly b { font: italic 700 13px Georgia, serif; color: var(--ok); }
+
+/* ---------- หน้าแรก: เมนูด้านข้าง ---------- */
+.home { display: flex; overflow: hidden; }
+.side-nav { width: 220px; flex: none; display: flex; flex-direction: column; gap: 4px; padding: 18px 12px; background: var(--surface); border-right: 1px solid var(--line); }
+.side-nav button { display: flex; align-items: center; gap: 10px; border: 0; background: transparent; padding: 10px 12px; border-radius: 10px; text-align: left; color: var(--muted); font-size: 15px; }
+.side-nav button:hover { background: var(--surface-2); color: var(--text); }
+.side-nav button.on { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.side-nav .side-foot { margin-top: auto; font-size: 12px; padding: 0 12px; }
+.home-main { flex: 1; overflow-y: auto; min-width: 0; }
+
+/* ---------- จัดการหน้า PDF ---------- */
+.pt { max-width: 1240px; margin: 0 auto; padding: 28px 22px 90px; display: flex; flex-direction: column; gap: 12px; }
+.pt-head h1 { font-size: 24px; margin: 0 0 4px; }
+.pt-head p { margin: 0; }
+.pt-bar { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 10px; margin: 0 -10px; background: var(--bg); border-bottom: 1px solid var(--line); }
+.pt-bar .icon-btn { border: 1px solid var(--line); background: var(--surface); }
+.pt-bar .btn:disabled, .pt-bar .icon-btn:disabled { opacity: .4; cursor: default; }
+.pt-sep { width: 1px; height: 24px; background: var(--line); margin: 0 4px; }
+.pt-info { font-size: 13.5px; }
+.pt-info [data-info] { font-weight: 700; }
+.pt-empty { margin-top: 6px; }
+.pt-pane.over .pt-grid, .pt-pane.over .pt-empty { outline: 2px dashed var(--accent); outline-offset: 6px; border-radius: 12px; }
+.pt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 16px; padding-top: 4px; min-height: 40px; }
+.pt-card { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 10px 8px; display: flex; flex-direction: column; gap: 6px; cursor: grab; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.pt-card:hover { border-color: var(--accent); }
+.pt-card.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); background: var(--accent-soft); }
+.pt-card.drop-before::before, .pt-card.drop-after::after { content: ''; position: absolute; top: 6px; bottom: 6px; width: 4px; border-radius: 2px; background: var(--accent); }
+.pt-card.drop-before::before { left: -11px; }
+.pt-card.drop-after::after { right: -11px; }
+.pt-thumb { height: 190px; display: grid; place-items: center; }
+.pt-paper { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); max-width: 100%; max-height: 100%; overflow: hidden; display: grid; place-items: center; color: #999; font-size: 13px; }
+.pt-paper canvas { width: 100%; height: 100%; display: block; }
+.pt-paper.blank { background: #fff; border: 1px dashed #bbb; box-shadow: none; }
+.pt-meta { display: flex; align-items: baseline; gap: 6px; font-size: 12.5px; min-width: 0; }
+.pt-meta .pt-num { font-size: 14px; }
+.pt-meta .pt-src { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pt-acts { display: flex; justify-content: space-between; opacity: 0; transition: opacity .12s; }
+.pt-card:hover .pt-acts, .pt-card.sel .pt-acts { opacity: 1; }
+.pt-acts .icon-btn { width: 30px; height: 30px; }
+.pt-acts .icon-btn svg.i { width: 17px; height: 17px; }
+@media (hover: none) { .pt-acts { opacity: 1; } }
+.pt-ghost { position: fixed; z-index: 300; pointer-events: none; background: var(--accent); color: #fff; font-weight: 700; padding: 6px 12px; border-radius: 8px; box-shadow: var(--shadow); font-size: 13px; }
+body.pt-dragging, body.pt-dragging * { cursor: grabbing !important; }
+
+@media (max-width: 860px) {
+  .home { flex-direction: column; }
+  .side-nav { width: auto; flex-direction: row; padding: 8px 10px; border-right: 0; border-bottom: 1px solid var(--line); overflow-x: auto; }
+  .side-nav button { flex: 1; justify-content: center; padding: 9px 10px; white-space: nowrap; }
+  .side-nav .side-foot { display: none; }
+  .pt { padding: 16px 12px 90px; }
+  .pt-bar .btn span { display: none; }
+  .pt-bar .btn { padding: 0 10px; }
+  .pt-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+  .pt-thumb { height: 150px; }
+}
+
+/* ซ่อนจริงเมื่อมี hidden (กันคลาสที่ตั้ง display ไว้ทับ) */
+[hidden] { display: none !important; }
