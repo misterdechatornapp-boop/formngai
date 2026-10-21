@@ -1,5 +1,5 @@
 // Service worker: ใช้เครือข่ายก่อน (ได้โค้ดใหม่เสมอ) ถ้าออฟไลน์ใช้ของในแคช
-const CACHE = 'pdf-form-easy-v4';
+const CACHE = 'pdf-form-easy-v5';
 const SHELL = [
   './', 'index.html', 'css/app.css', 'manifest.webmanifest', 'icon.svg',
   'js/main.js', 'js/store.js', 'js/icons.js', 'js/ui.js', 'js/textlayout.js', 'js/detect.js',

@@ -11,6 +11,7 @@ const T = {
   anchor: null,       // สำหรับ Shift+คลิก
   undo: [], redo: [],
   dirty: false,       // มีการเปลี่ยนที่ยังไม่ได้บันทึกเป็นไฟล์
+  zoom: (() => { try { return Math.min(620, Math.max(120, +localStorage.getItem('pfe-ptZoom') || 190)); } catch (e) { return 190; } })(), // ความสูงรูปย่อ (px)
   name: '',
   cards: new Map(),   // id → การ์ด (คงไว้ ไม่วาดใหม่ตอนสลับลำดับ)
   root: null, grid: null, observer: null, opts: null, ready: false,
@@ -45,7 +46,12 @@ export function initPageTool(root, opts) {
       <button class="btn" data-a="toform" title="นำ PDF นี้ไปวางช่องกรอกต่อ">${icon('pen')}<span>เปิดในตัววางช่อง</span></button>
       <button class="btn primary" data-a="save">${icon('download')}<span>บันทึก PDF</span></button>
     </div>
-    <div class="pt-info"><span data-info></span><span class="muted" data-hint></span></div>
+    <div class="pt-info"><div class="grow"><span data-info></span><span class="muted" data-hint></span></div>
+      <div class="pt-zoom" data-zoombox title="ขนาดรูปย่อ (Ctrl+ลูกกลิ้งเมาส์บนรายการ)">
+        <button class="icon-btn" data-z="-">${icon('minus')}</button>
+        <input type="range" min="120" max="620" step="10" data-zr>
+        <button class="icon-btn" data-z="+">${icon('plus')}</button>
+      </div></div>
     <label class="drop pt-empty" data-empty>
       <input type="file" accept="application/pdf,.pdf" multiple hidden data-file>
       <span class="drop-icon">${icon('upload')}</span>
@@ -73,6 +79,16 @@ export function initPageTool(root, opts) {
     addFiles([...(e.dataTransfer?.files || [])]);
   });
   T.grid.addEventListener('pointerdown', onGridDown);
+  T.grid.addEventListener('dblclick', (e) => { const c = e.target.closest('.pt-card'); if (c && !e.target.closest('[data-c]')) openPreview(c.dataset.id); });
+  const zr = root.querySelector('[data-zr]');
+  zr.addEventListener('input', () => setThumbZoom(+zr.value));
+  root.querySelectorAll('[data-z]').forEach((b) => b.addEventListener('click', () => setThumbZoom(T.zoom * (b.dataset.z === '+' ? 1.25 : 0.8))));
+  T.grid.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    setThumbZoom(T.zoom * Math.exp(-e.deltaY * 0.002));
+  }, { passive: false });
+  setThumbZoom(T.zoom, true);
   document.addEventListener('keydown', onKey);
   // ปิด/รีเฟรชแท็บขณะมีงานจัดหน้าที่ยังไม่บันทึก → เบราว์เซอร์ถามยืนยัน (งานนี้ไม่ได้เก็บในเครื่อง)
   window.addEventListener('beforeunload', (e) => { if (T.dirty && T.items.length) { e.preventDefault(); e.returnValue = ''; } });
@@ -275,6 +291,7 @@ function cardFor(it) {
     <div class="pt-meta"><b class="pt-num"></b><span class="pt-src"></span></div>
     <div class="pt-acts">
       <button class="icon-btn" data-c="left" title="เลื่อนไปก่อนหน้า">${icon('left2')}</button>
+      <button class="icon-btn" data-c="view" title="ดูหน้าเต็ม (ดับเบิลคลิก)">${icon('search')}</button>
       <button class="icon-btn" data-c="rotr" title="หมุนขวา">${icon('rotr')}</button>
       <button class="icon-btn" data-c="del" title="ลบหน้านี้">${icon('trash')}</button>
       <button class="icon-btn" data-c="right" title="เลื่อนไปถัดไป">${icon('right2')}</button>
@@ -289,22 +306,28 @@ function paperStyle(it) {
   return `aspect-ratio:${w}/${hh};${w > hh ? 'width:100%' : 'height:100%'}`;
 }
 
+// ความละเอียดรูปย่อตามขนาดที่แสดง (ปัดเป็นขั้น ไม่ให้วาดใหม่ทุกครั้งที่เลื่อนแถบ)
+const thumbRes = () => Math.ceil(Math.max(200, T.zoom * 1.1) / 100) * 100;
+const pageKey = (it) => `${it.src}|${it.idx}|${it.rot}|${it.blank ? 'b' : ''}`;
+const thumbKey = (it) => `${pageKey(it)}|${thumbRes()}`;
+
 async function renderThumb(id) {
   const it = T.items.find((x) => x.id === id);
   const c = T.cards.get(id);
   if (!it || !c) return;
   const paper = c.querySelector('.pt-paper');
-  const key = `${it.src}|${it.idx}|${it.rot}|${it.blank ? 'b' : ''}`;
+  const key = thumbKey(it);
   if (paper.dataset.key === key) return;
+  const samePage = (paper.dataset.key || '').startsWith(pageKey(it) + '|');
   paper.dataset.key = key;
-  paper.innerHTML = '';
-  if (it.blank) { paper.classList.add('blank'); paper.textContent = 'หน้าว่าง'; return; }
+  if (it.blank) { paper.innerHTML = ''; paper.classList.add('blank'); paper.textContent = 'หน้าว่าง'; return; }
   paper.classList.remove('blank');
+  if (!samePage) paper.innerHTML = ''; // หน้าเดิมแค่ขยาย → คงภาพเก่าไว้จนภาพใหม่พร้อม (ไม่กะพริบ)
   try {
     const pg = await T.sources.get(it.src).pdf.getPage(it.idx + 1);
     const base = pg.getViewport({ scale: 1, rotation: (pg.rotate + it.rot) % 360 });
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const scale = (200 / Math.max(base.width, base.height)) * dpr;
+    const scale = (thumbRes() / Math.max(base.width, base.height)) * dpr;
     const vp = pg.getViewport({ scale, rotation: (pg.rotate + it.rot) % 360 });
     const cv = document.createElement('canvas');
     cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
@@ -340,8 +363,21 @@ function refresh(rerender = []) {
     if (T.grid.children[i] !== c) T.grid.insertBefore(c, T.grid.children[i] || null);
     const pk = c.querySelector('.pt-paper').dataset.key;
     if (!pk) T.observer.observe(c);
-    else if (rerender.includes(it.id) || pk !== `${it.src}|${it.idx}|${it.rot}|${it.blank ? 'b' : ''}`) renderThumb(it.id);
+    else if (rerender.includes(it.id) || !pk.startsWith(pageKey(it) + '|')) renderThumb(it.id);
+    else if (pk !== thumbKey(it)) T.observer.observe(c); // แค่ความละเอียดเปลี่ยน → วาดใหม่เมื่อเห็นบนจอ
   });
+}
+
+let zoomTimer = null;
+function setThumbZoom(z, init) {
+  T.zoom = Math.round(Math.min(620, Math.max(120, z)));
+  T.grid.style.setProperty('--ptz', T.zoom);
+  const zr = T.root.querySelector('[data-zr]');
+  if (zr && +zr.value !== T.zoom) zr.value = T.zoom;
+  try { localStorage.setItem('pfe-ptZoom', String(T.zoom)); } catch (e) { /* ignore */ }
+  if (init) return;
+  clearTimeout(zoomTimer);
+  zoomTimer = setTimeout(() => refresh(), 150);
 }
 
 // ---------- เลือก / ลากสลับลำดับ ----------
@@ -386,6 +422,7 @@ function onGridDown(e) {
     e.preventDefault();
     const i = T.items.findIndex((x) => x.id === id);
     const c = btn.dataset.c;
+    if (c === 'view') { openPreview(id); return; }
     if (c === 'del') { snapshot(); T.items.splice(i, 1); T.sel.delete(id); refresh(); }
     if (c === 'rotr') { snapshot(); T.items[i].rot = (T.items[i].rot + 90) % 360; refresh([id]); }
     if (c === 'left' && i > 0) move([id], i - 1);
@@ -434,7 +471,7 @@ function onGridDown(e) {
 }
 
 function onKey(e) {
-  if (!visible() || !T.items.length || document.querySelector('.backdrop')) return;
+  if (!visible() || !T.items.length || document.querySelector('.backdrop, .pv-back')) return;
   const t = e.target;
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
   const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
@@ -443,6 +480,96 @@ function onKey(e) {
   else if (mod && k === 'z') { e.preventDefault(); act(e.shiftKey ? 'redo' : 'undo'); }
   else if (mod && k === 'y') { e.preventDefault(); act('redo'); }
   else if (k === 'escape' && T.sel.size) { T.sel.clear(); refresh(); }
+}
+
+// ---------- ดูหน้าเต็ม (ซูม / ก่อน-ถัดไป) ----------
+function openPreview(id) {
+  let i = T.items.findIndex((x) => x.id === id);
+  if (i < 0) return;
+  let z = 1; // 1 = พอดีหน้าจอ
+  let task = null;
+  const bd = h(`<div class="pv-back" role="dialog" aria-modal="true">
+    <div class="pv-bar">
+      <button class="icon-btn" data-p="prev" title="หน้าก่อน (←)">${icon('left2')}</button>
+      <span class="pv-pos" data-pos></span>
+      <button class="icon-btn" data-p="next" title="หน้าถัดไป (→)">${icon('right2')}</button>
+      <span class="spacer"></span>
+      <button class="icon-btn" data-p="out" title="ย่อ (−)">${icon('minus')}</button>
+      <button class="pv-zl" data-p="fit" title="พอดีหน้าจอ (0)">100%</button>
+      <button class="icon-btn" data-p="in" title="ขยาย (+)">${icon('plus')}</button>
+      <button class="icon-btn" data-p="close" title="ปิด (Esc)">${icon('close')}</button>
+    </div>
+    <div class="pv-stage" data-stage><div class="pv-page" data-page></div></div>
+  </div>`);
+  document.body.appendChild(bd);
+  const stage = bd.querySelector('[data-stage]'), pageEl = bd.querySelector('[data-page]');
+  const render = async () => {
+    const it = T.items[i];
+    bd.querySelector('[data-pos]').textContent = `หน้า ${i + 1} / ${T.items.length}`;
+    bd.querySelector('[data-p=fit]').textContent = Math.round(z * 100) + '%';
+    const rot = it.rot % 180 === 0;
+    const w = rot ? it.w : it.h, hh = rot ? it.h : it.w;
+    const fit = Math.min((stage.clientWidth - 32) / w, (stage.clientHeight - 32) / hh);
+    const scale = fit * z;
+    pageEl.style.width = w * scale + 'px';
+    pageEl.style.height = hh * scale + 'px';
+    if (it.blank) { pageEl.innerHTML = '<div class="pv-blank">หน้าว่าง</div>'; return; }
+    task?.cancel();
+    try {
+      const pg = await T.sources.get(it.src).pdf.getPage(it.idx + 1);
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const vp = pg.getViewport({ scale: scale * dpr, rotation: (pg.rotate + it.rot) % 360 });
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+      const ctx = cv.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+      task = pg.render({ canvasContext: ctx, viewport: vp, intent: 'print' });
+      await task.promise;
+      pageEl.innerHTML = '';
+      pageEl.appendChild(cv);
+    } catch (e) { if (e?.name !== 'RenderingCancelledException') console.warn(e); }
+  };
+  const zoomTo = (nz, ax, ay) => {
+    const old = z;
+    z = Math.min(8, Math.max(0.25, nz));
+    // ซูมรอบจุดที่ชี้ (หรือกึ่งกลาง)
+    const r = stage.getBoundingClientRect();
+    const px = (ax ?? r.width / 2) + stage.scrollLeft, py = (ay ?? r.height / 2) + stage.scrollTop;
+    render().then(() => {
+      stage.scrollLeft = px * (z / old) - (ax ?? r.width / 2);
+      stage.scrollTop = py * (z / old) - (ay ?? r.height / 2);
+    });
+  };
+  const go = (d) => { const n = i + d; if (n < 0 || n >= T.items.length) return; i = n; z = 1; stage.scrollTo(0, 0); render(); };
+  const close = () => { task?.cancel(); bd.remove(); document.removeEventListener('keydown', onKey2, true); window.removeEventListener('resize', onResize); };
+  const onKey2 = (e) => {
+    const k = e.key;
+    if (k === 'Escape') close();
+    else if (k === 'ArrowLeft' || k === 'PageUp') go(-1);
+    else if (k === 'ArrowRight' || k === 'PageDown') go(1);
+    else if (k === '+' || k === '=') zoomTo(z * 1.25);
+    else if (k === '-') zoomTo(z / 1.25);
+    else if (k === '0') { z = 1; render(); }
+    else return;
+    e.preventDefault(); e.stopPropagation();
+  };
+  const onResize = () => render();
+  bd.querySelector('.pv-bar').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-p]');
+    if (!b) return;
+    ({ prev: () => go(-1), next: () => go(1), in: () => zoomTo(z * 1.25), out: () => zoomTo(z / 1.25), fit: () => { z = 1; render(); }, close })[b.dataset.p]();
+  });
+  stage.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    const r = stage.getBoundingClientRect();
+    zoomTo(z * Math.exp(-e.deltaY * 0.0025), e.clientX - r.left, e.clientY - r.top);
+  }, { passive: false });
+  stage.addEventListener('dblclick', (e) => { const r = stage.getBoundingClientRect(); zoomTo(z > 1.01 ? 1 : 2, e.clientX - r.left, e.clientY - r.top); });
+  bd.addEventListener('click', (e) => { if (e.target === stage) close(); });
+  document.addEventListener('keydown', onKey2, true);
+  window.addEventListener('resize', onResize);
+  render();
 }
 
 // ใช้จากภายนอก: ลากไฟล์มาวางที่ส่วนอื่นของหน้าขณะเปิดเครื่องมือนี้

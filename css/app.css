@@ -478,8 +478,31 @@ body.pt-dragging, body.pt-dragging * { cursor: grabbing !important; }
   .pt-bar .btn span { display: none; }
   .pt-bar .btn { padding: 0 10px; }
   .pt-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
-  .pt-thumb { height: 150px; }
 }
 
 /* ซ่อนจริงเมื่อมี hidden (กันคลาสที่ตั้ง display ไว้ทับ) */
 [hidden] { display: none !important; }
+
+/* ---------- จัดการหน้า: ขนาดรูปย่อ + ดูหน้าเต็ม ---------- */
+.pt-info { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.pt-zoom { display: flex; align-items: center; gap: 4px; }
+.pt-zoom input[type=range] { width: 150px; accent-color: var(--accent); }
+.pt-zoom .icon-btn { width: 32px; height: 32px; border: 1px solid var(--line); background: var(--surface); }
+.pt-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(var(--ptz, 190) * 0.84px)), 1fr)); }
+.pt-thumb { height: calc(var(--ptz, 190) * 1px); }
+.pt-acts { flex-wrap: wrap; gap: 2px; }
+.pv-back { position: fixed; inset: 0; z-index: 160; background: rgba(8, 10, 16, .93); display: flex; flex-direction: column; animation: fade .12s; }
+.pv-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: #151a24; color: #e7eaf1; border-bottom: 1px solid #2a3140; }
+.pv-bar .icon-btn { color: #e7eaf1; }
+.pv-bar .icon-btn:hover { background: #262d3b; }
+.pv-pos { min-width: 110px; text-align: center; font-variant-numeric: tabular-nums; }
+.pv-zl { border: 0; background: transparent; color: #e7eaf1; min-width: 58px; padding: 6px; border-radius: 8px; font-variant-numeric: tabular-nums; }
+.pv-zl:hover { background: #262d3b; }
+.pv-stage { flex: 1; overflow: auto; display: flex; padding: 16px; }
+.pv-page { margin: auto; flex: none; background: #fff; box-shadow: 0 6px 30px rgba(0,0,0,.5); }
+.pv-page canvas { width: 100%; height: 100%; display: block; }
+.pv-blank { width: 100%; height: 100%; display: grid; place-items: center; color: #999; }
+@media (max-width: 860px) {
+  .pt-thumb { height: calc(var(--ptz, 190) * 0.8px); }
+  .pt-zoom input[type=range] { width: 100px; }
+}
