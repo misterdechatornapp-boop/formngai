@@ -220,6 +220,7 @@ async function addWidget(form, page, f, v, Ti, font, usedNames) {
     usedNames.set(f.name || f.id, { key, field, fmt: f.dateFormat || '' });
     const text = displayText(f, v);
     if (text) field.setText(text);
+    if (f.formula && text) field.enableReadOnly(); // ผลจากสูตร (คำนวณในแอป) — กันแก้ทับ
   }
   field.addToPage(page, { ...opts, font });
   field.setAlignment(f.align === 'center' ? P.TextAlignment.Center : f.align === 'right' ? P.TextAlignment.Right : P.TextAlignment.Left);

@@ -10,6 +10,7 @@ import { DATE_FORMATS, DATE_FORMATS_BY_LANG, DEFAULT_DATE_FORMAT, formatDate, pa
 import { parseDelimited, autoMap, truthy, fetchGoogleSheet } from './merge.js';
 import { buildPdf, concatPdfs, displayText } from './exporter.js';
 import { openSignatureDialog } from './sigpad.js';
+import { computeAll, parseFormula, NUM_FORMATS, FUNC_NAMES } from './formula.js';
 import { findCandidates, nameCandidates, pageText, AUTO_COLORS, BRUSHES, BRUSH_CODE } from './auto.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('../vendor/pdf.worker.min.mjs', import.meta.url).href;
@@ -142,6 +143,7 @@ async function openBytes(bytes, name, fromStore) {
     updateUndoBtns();
     setSaveState(isNew ? 'บันทึกในเครื่องแล้ว' : 'บันทึกแล้ว');
     if (!isNew && !fromStore) toast('เปิดงานเดิมของไฟล์นี้ — ช่องที่วางไว้ยังอยู่ครบ', { type: 'ok' });
+    recompute(false);
     if (!doc.fields.length) setTimeout(() => suggestFieldSources(), 400);
   } catch (e) {
     console.error(e);
@@ -324,9 +326,11 @@ function updateFieldEl(f, d = elOf(f)) {
   if (!d) return;
   const v = valOf(f);
   const sel = S.sel.has(f.id);
-  d.className = `fld t-${f.type}${sel ? ' sel' : ''}${f.locked ? ' locked' : ''}${isEmptyVal(f, v) ? ' empty' : ''}${f.required ? ' req' : ''}${S.editor?.f.id === f.id ? ' editing' : ''}`;
+  const fxErr = f.formula && S.formulaErrors?.has(f.name);
+  d.className = `fld t-${f.type}${sel ? ' sel' : ''}${f.locked ? ' locked' : ''}${isEmptyVal(f, v) && !f.formula ? ' empty' : ''}${f.required ? ' req' : ''}${S.editor?.f.id === f.id ? ' editing' : ''}${f.formula ? ' fx' : ''}${fxErr ? ' fx-err' : ''}${S.pick ? ' pickable' : ''}`;
   setPos(d, f);
   let html = fieldInner(f, v);
+  if (f.formula) html += `<span class="fld-fx" title="${esc(fxErr ? S.formulaErrors.get(f.name) : f.formula)}">ƒ</span>`;
   if (S.mode === 'design') {
     html += `<span class="fld-name">${esc(f.name)}${f.locked ? ' 🔒' : ''}</span>`;
     if (sel && S.sel.size === 1 && !f.locked) html += HANDLES;
@@ -378,6 +382,7 @@ function updateUndoBtns() {
 }
 
 function changed(fullPanel = true) {
+  recompute(false);
   renderAllFields();
   if (fullPanel) renderPanel(); else renderPanel();
   scheduleSave();
@@ -405,6 +410,7 @@ async function flushSave() {
 // ======================================================================
 function setMode(m, silent) {
   closeEditor();
+  endPick();
   S.mode = m;
   document.body.classList.toggle('mode-design', m === 'design');
   document.body.classList.toggle('mode-fill', m === 'fill');
@@ -501,6 +507,12 @@ function bindOverlay(p) {
       return startPaint(e, p);
     }
     const fEl = e.target.closest('.fld');
+    // โหมดเลือกช่องใส่สูตร: คลิกช่อง = ใส่ [ชื่อช่อง] ลงในสูตร (ไม่เลือก/ไม่ย้ายช่อง)
+    if (S.pick) {
+      e.preventDefault();
+      if (fEl) pickField(byId(fEl.dataset.id));
+      return;
+    }
     const hd = e.target.closest('.h');
     if (hd && fEl) { e.preventDefault(); return startResize(e, p, byId(fEl.dataset.id), hd.dataset.h); }
     if (fEl) { e.preventDefault(); return startMove(e, p, byId(fEl.dataset.id)); }
@@ -1189,12 +1201,34 @@ function setValue(name, v, from) {
   S.doc.values[name] = v;
   for (const f of S.doc.fields) if (f.name === name) updateFieldEl(f);
   if (from !== 'list') syncFillItem(name);
+  recompute();
   updateProgress();
   scheduleSave();
 }
 
+// คำนวณสูตรทั้งหมดใหม่ แล้ววาดเฉพาะช่องที่ผลเปลี่ยน
+const hasFormula = (f) => !!f?.formula;
+function recompute(render = true) {
+  if (!S.doc) return;
+  const { values, errors } = computeAll(S.doc.fields, S.doc.values);
+  const prevErr = S.formulaErrors || new Map();
+  S.formulaErrors = errors;
+  const changedNames = new Set();
+  for (const f of S.doc.fields) {
+    if (!f.formula) continue;
+    if (values[f.name] !== S.doc.values[f.name] || errors.has(f.name) !== prevErr.has(f.name)) changedNames.add(f.name);
+  }
+  S.doc.values = values;
+  if (!render) return;
+  for (const n of changedNames) {
+    for (const f of S.doc.fields) if (f.name === n) updateFieldEl(f);
+    syncFillItem(n);
+  }
+}
+
 async function editField(f) {
   if (!f) return;
+  if (f.formula) { toast('ช่องนี้คำนวณจากสูตร — แก้สูตรได้ในหน้า “ออกแบบช่อง”'); return; }
   S.activeName = f.name;
   markActiveItem();
   if (f.type === 'checkbox') { setValue(f.name, truthy(valOf(f)) ? '' : '1'); return; }
@@ -1262,7 +1296,7 @@ function closeEditor() {
 
 const FILL_TYPES = new Set(['text', 'multiline', 'date']);
 function neighborField(f, dir) {
-  const list = readingOrder(S.doc.fields.filter((x) => FILL_TYPES.has(x.type)));
+  const list = readingOrder(S.doc.fields.filter((x) => FILL_TYPES.has(x.type) && !x.formula));
   const seen = new Set();
   const uniq = list.filter((x) => (seen.has(x.name) ? false : seen.add(x.name)));
   const i = uniq.findIndex((x) => x.name === f.name);
@@ -1278,7 +1312,7 @@ function uniqueFields() {
 function updateProgress() {
   const el = $('#fillProgress');
   if (!el) return;
-  const u = uniqueFields();
+  const u = uniqueFields().filter((f) => !f.formula);
   const done = u.filter((f) => !isEmptyVal(f, valOf(f))).length;
   el.querySelector('i').style.width = (u.length ? (done / u.length) * 100 : 0) + '%';
   $('#fillProgressText').textContent = `กรอกแล้ว ${done} / ${u.length}`;
@@ -1289,6 +1323,7 @@ function syncFillItem(name) {
   if (!item) return;
   const f = S.doc.fields.find((x) => x.name === name);
   const v = valOf(f);
+  if (f.formula) { const ro = item.querySelector('[data-ro]'); if (ro) ro.textContent = v || '—'; return; }
   const c = item.querySelector('[data-ctl]');
   if (!c || document.activeElement === c) return;
   if (f.type === 'checkbox') c.checked = truthy(v);
@@ -1402,6 +1437,14 @@ function renderProps(body, f) {
     if (!S.doc.fields.some((x) => x.name === old) && S.doc.values[old] !== undefined && S.doc.values[nv] === undefined) {
       S.doc.values[nv] = S.doc.values[old]; delete S.doc.values[old];
     }
+    // สูตรที่อ้างถึงชื่อเดิม → เปลี่ยนตาม (ถ้าไม่มีช่องอื่นใช้ชื่อเดิมแล้ว)
+    if (!S.doc.fields.some((x) => x.name === old)) {
+      let n = 0;
+      for (const x of S.doc.fields) {
+        if (x.formula && x.formula.includes(`[${old}]`)) { x.formula = x.formula.split(`[${old}]`).join(`[${nv}]`); n++; }
+      }
+      if (n) { recompute(); scheduleSave(); renderAllFields(); toast(`อัปเดตสูตร ${n} ช่องให้ใช้ชื่อใหม่แล้ว`); }
+    }
     const same = S.doc.fields.filter((x) => x.name === nv).length;
     if (same > 1) toast(`มี ${same} ช่องชื่อ “${nv}” — จะใช้ค่าร่วมกัน`);
   };
@@ -1431,6 +1474,7 @@ function renderProps(body, f) {
     st.appendChild(h('<label class="f">จัดแนวตั้ง</label>')).appendChild(segRow([['top', 'ชิดบน', 'aT'], ['middle', 'กลางแนวตั้ง', 'aCV'], ['bottom', 'ชิดล่าง (บนเส้น)', 'aB']], f.vAlign || 'middle', (v) => mutate((x) => { x.vAlign = v; })));
   }
   body.appendChild(st);
+  renderFormulaSection(body, f);
 
   const pos = h(`<div class="sec"><h3>ตำแหน่งและขนาด <span class="badge">หน้า ${f.page} · หน่วย pt</span></h3><div class="grid4">
     ${[['x', 'X'], ['y', 'Y'], ['w', 'กว้าง'], ['h', 'สูง']].map(([k, l]) => `<label class="f">${l}<input class="inp num" type="number" step="0.5" value="${f[k]}" data-k="${k}"></label>`).join('')}
@@ -1488,6 +1532,19 @@ function renderMultiProps(body, list) {
   st.appendChild(switchRow('ล็อกตำแหน่ง', list.every((f) => f.locked), (v) => mutate((x) => { x.locked = v; })));
   body.appendChild(st);
 
+  const nums = list.filter((x) => x.type === 'text' || x.type === 'multiline');
+  if (nums.length) {
+    const fx = h(`<div class="sec"><h3>สูตรรวม <span class="badge">${nums.length} ช่อง</span></h3>
+      <div class="row wrap"><button class="btn sm" data-col>Σ รวมคอลัมน์ด้านบน</button><button class="btn sm" data-row>Σ รวมแถวทางซ้าย</button>
+      ${nums.some((x) => x.formula) ? `<button class="btn sm danger" data-clr>${icon('trash')}ลบสูตร</button>` : ''}</div>
+      <label class="f">รูปแบบตัวเลข<select class="inp" data-nf><option value="">—</option>${NUM_FORMATS.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select></label>
+      <div class="muted" style="font-size:12px;line-height:1.5">เช่น เลือกทั้งแถว “จำนวนเงินรวม” แล้วกด “รวมคอลัมน์ด้านบน” → แต่ละช่องได้สูตร SUM ของคอลัมน์ตัวเอง</div></div>`);
+    fx.querySelector('[data-col]').onclick = () => applyTotals(nums, 'col');
+    fx.querySelector('[data-row]').onclick = () => applyTotals(nums, 'row');
+    fx.querySelector('[data-clr]')?.addEventListener('click', () => mutate((x) => { delete x.formula; }, nums));
+    fx.querySelector('[data-nf]').onchange = (e) => e.target.value && mutate((x) => { x.numFormat = e.target.value; }, nums);
+    body.appendChild(fx);
+  }
   const act = h(`<div class="sec"><div class="row wrap">
     <button class="btn sm" data-a="ren">${icon('tag')}ตั้งชื่อเรียงลำดับ</button>
     <button class="btn sm" data-a="fit" title="ขยายช่องให้เต็มกรอบ/กล่อง/ช่องตารางที่อยู่">${icon('sameW')}ขยายเต็มกรอบ</button>
@@ -1798,6 +1855,160 @@ function renderDateControls(st, list) {
   st.appendChild(box);
 }
 
+// ======================================================================
+// สูตรคำนวณ (เหมือน Excel) — ใส่เฉพาะช่องที่ต้องการ
+// ======================================================================
+const NUMERIC_TYPES = new Set(['text', 'multiline']);
+const fxRef = (name) => `[${name}]`;
+
+// ช่องตัวเลขในคอลัมน์เดียวกันที่อยู่ "ติดกัน" ด้านบน (เช่น แถวรวมของตาราง)
+function columnAbove(f) {
+  const cand = fieldsOn(f.page).filter((o) => o !== f && NUMERIC_TYPES.has(o.type) &&
+    Math.min(o.x + o.w, f.x + f.w) - Math.max(o.x, f.x) >= 0.6 * Math.min(o.w, f.w) && o.y + o.h <= f.y + 1.5)
+    .sort((a, b) => b.y - a.y);
+  const out = [];
+  let top = f.y;
+  for (const o of cand) {
+    if (top - (o.y + o.h) > Math.max(o.h, f.h) * 2.2) break;
+    out.push(o); top = o.y;
+  }
+  return out.reverse();
+}
+// ช่องตัวเลขในแถวเดียวกันทางซ้าย (เช่น รวมค่าใช้จ่ายแต่ละวัน)
+function rowLeft(f) {
+  const cand = fieldsOn(f.page).filter((o) => o !== f && NUMERIC_TYPES.has(o.type) &&
+    Math.min(o.y + o.h, f.y + f.h) - Math.max(o.y, f.y) >= 0.6 * Math.min(o.h, f.h) && o.x + o.w <= f.x + 1.5)
+    .sort((a, b) => b.x - a.x);
+  const out = [];
+  let left = f.x;
+  for (const o of cand) {
+    if (left - (o.x + o.w) > 40) break;
+    out.push(o); left = o.x;
+  }
+  return out.reverse();
+}
+const uniqNames = (list) => [...new Set(list.map((o) => o.name))];
+
+// ใส่สูตรรวมให้หลายช่องพร้อมกัน: mode 'col' | 'row'
+function applyTotals(list, mode) {
+  const targets = list.filter((f) => NUMERIC_TYPES.has(f.type));
+  let n = 0;
+  pushHistory();
+  for (const f of targets) {
+    const src = uniqNames((mode === 'col' ? columnAbove(f) : rowLeft(f)).filter((o) => !targets.includes(o) || mode === 'row'));
+    if (!src.length) continue;
+    f.formula = '=SUM(' + src.map(fxRef).join(', ') + ')';
+    if (!f.align || f.align === 'left') f.align = 'right';
+    n++;
+  }
+  changed();
+  toast(n ? `ใส่สูตรรวม${mode === 'col' ? 'คอลัมน์' : 'แถว'}ให้ ${n} ช่อง` : `ไม่พบช่องตัวเลข${mode === 'col' ? 'ด้านบน' : 'ทางซ้าย'}`, { type: n ? 'ok' : '' });
+}
+
+// ---------- โหมดคลิกเลือกช่องจากหน้า ----------
+function startPick(f, ta) {
+  S.pick = { f, ta };
+  document.body.classList.add('picking');
+  renderAllFields();
+  renderPanel(); // ปุ่มเปลี่ยนเป็น "เสร็จ" · ช่องพิมพ์สูตรตัวใหม่ถูกผูกกับ S.pick.ta
+  const t2 = S.pick.ta;
+  if (t2) { t2.focus(); t2.setSelectionRange(t2.value.length, t2.value.length); }
+  toast('คลิกช่องบนเอกสารเพื่อใส่ในสูตร · กด Esc หรือ “เสร็จ” เมื่อพอ', { ms: 5000 });
+}
+function endPick() {
+  if (!S.pick) return;
+  S.pick = null;
+  document.body.classList.remove('picking');
+  renderAllFields();
+  renderPanel();
+}
+function pickField(o) {
+  const { f, ta } = S.pick || {};
+  if (!o || !ta) return;
+  if (o.id === f.id) { toast('อ้างถึงช่องตัวเองไม่ได้'); return; }
+  const ref = fxRef(o.name);
+  let v = ta.value;
+  const pos = ta.selectionStart ?? v.length, end = ta.selectionEnd ?? pos;
+  if (!v.trim()) { v = '=' + ref; ta.value = v; ta.setSelectionRange(v.length, v.length); }
+  else {
+    const before = v.slice(0, pos).trimEnd();
+    // อยู่ในวงเล็บของฟังก์ชัน เช่น SUM( → คั่นด้วย "," · นอกวงเล็บ → ต่อด้วย "+"
+    const depth = (before.match(/\(/g) || []).length - (before.match(/\)/g) || []).length;
+    const sep = /[\])\d%]$/.test(before) ? (depth > 0 ? ', ' : ' + ') : '';
+    ta.value = v.slice(0, pos) + sep + ref + v.slice(end);
+    const c = pos + sep.length + ref.length;
+    ta.setSelectionRange(c, c);
+  }
+  ta.dispatchEvent(new Event('input', { bubbles: true }));
+  const d = elOf(o);
+  if (d) { d.classList.remove('flash'); void d.offsetWidth; d.classList.add('flash'); }
+}
+
+function renderFormulaSection(body, f) {
+  if (!NUMERIC_TYPES.has(f.type)) return;
+  const picking = S.pick?.f.id === f.id;
+  const sec = h(`<div class="sec fx-sec"><h3>สูตรคำนวณ <span class="badge">ใส่เมื่อต้องการ</span></h3>
+    <textarea class="inp mono" rows="2" spellcheck="false" placeholder="เช่น =SUM([ค่าที่พัก 1], [ค่าเดินทาง 1])" data-fx>${esc(f.formula || '')}</textarea>
+    <div class="fx-status" data-st></div>
+    <div class="row wrap">
+      <button class="btn sm ${picking ? 'primary' : ''}" data-pick>${icon('select')}${picking ? 'เสร็จ' : 'เลือกช่องจากหน้า'}</button>
+      <button class="btn sm" data-col title="รวมช่องตัวเลขที่อยู่ด้านบนในคอลัมน์เดียวกัน">Σ รวมคอลัมน์ด้านบน</button>
+      <button class="btn sm" data-row title="รวมช่องตัวเลขที่อยู่ทางซ้ายในแถวเดียวกัน">Σ รวมแถวทางซ้าย</button>
+    </div>
+    <div class="chips" data-fns></div>
+    <div class="row"><label class="f grow">รูปแบบตัวเลขของผลลัพธ์<select class="inp" data-nf>${NUM_FORMATS.map(([k, l]) => `<option value="${k}" ${(f.numFormat || 'auto') === k ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
+      ${f.formula ? `<button class="btn sm danger" data-clear style="align-self:flex-end">${icon('trash')}ลบสูตร</button>` : ''}</div>
+    <div class="muted" style="font-size:12px;line-height:1.5">อ้างถึงช่องด้วย [ชื่อช่อง] · ใช้ได้: + − × (*) ÷ (/) ^ % และ ${FUNC_NAMES.join(', ')} · ช่องว่าง/ข้อความถูกข้ามใน SUM</div>
+  </div>`);
+  const ta = sec.querySelector('[data-fx]');
+  if (picking) S.pick.ta = ta; // แผงถูกวาดใหม่ระหว่างเลือก → ผูกกับช่องพิมพ์ตัวใหม่
+  const st = sec.querySelector('[data-st]');
+  const status = () => {
+    const src = ta.value.trim();
+    if (!src) { st.className = 'fx-status'; st.textContent = 'ยังไม่มีสูตร — ช่องนี้กรอกเองตามปกติ'; return; }
+    const p = parseFormula(src);
+    if (p.error) { st.className = 'fx-status bad'; st.textContent = '⚠ ' + p.error; return; }
+    const err = S.formulaErrors?.get(f.name);
+    if (err) { st.className = 'fx-status bad'; st.textContent = '⚠ ' + err + (err.startsWith('#REF') ? ' — ไม่มีช่องชื่อนี้' : err === '#CIRC!' ? ' — สูตรอ้างถึงกันเป็นวง' : err === '#VALUE!' ? ' — มีช่องที่ไม่ใช่ตัวเลข' : ''); return; }
+    st.className = 'fx-status ok'; st.textContent = '= ' + (valOf(f) || '0');
+  };
+  let started = false;
+  ta.addEventListener('input', () => {
+    const src = ta.value.trim();
+    const p = src ? parseFormula(src) : null;
+    if (p?.error) { status(); return; } // ยังพิมพ์ไม่จบ — ยังไม่ใช้สูตร
+    if (!started) { pushHistory(); started = true; }
+    if (src) f.formula = src.startsWith('=') ? src : '=' + src; else delete f.formula;
+    recompute();
+    updateFieldEl(f);
+    status();
+    scheduleSave();
+  });
+  ta.addEventListener('change', () => { started = false; });
+  ta.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.pick) { e.preventDefault(); endPick(); } });
+  const fnBox = sec.querySelector('[data-fns]');
+  for (const fn of FUNC_NAMES) {
+    const b = h(`<button class="btn sm mono">${fn}( )</button>`);
+    b.onclick = () => {
+      const pos = ta.selectionStart ?? ta.value.length;
+      const ins = (ta.value.trim() ? '' : '=') + fn + '()';
+      ta.value = ta.value.slice(0, pos) + ins + ta.value.slice(ta.selectionEnd ?? pos);
+      ta.focus();
+      const c = pos + ins.length - 1;
+      ta.setSelectionRange(c, c);
+      status();
+    };
+    fnBox.appendChild(b);
+  }
+  sec.querySelector('[data-pick]').onclick = () => { if (S.pick) endPick(); else startPick(f, ta); };
+  sec.querySelector('[data-col]').onclick = () => applyTotals([f], 'col');
+  sec.querySelector('[data-row]').onclick = () => applyTotals([f], 'row');
+  sec.querySelector('[data-nf]').onchange = (e) => mutate((x) => { x.numFormat = e.target.value; }, [f]);
+  sec.querySelector('[data-clear]')?.addEventListener('click', () => { endPick(); mutate((x) => { delete x.formula; }, [f]); });
+  status();
+  body.appendChild(sec);
+}
+
 // ระยะห่างจากขอบกรอบ (ใช้ตอนแตะวางช่อง / สร้างอัตโนมัติ / ขยายเต็มกรอบ)
 function gapRow() {
   const r = h('<div class="f"><span>ระยะห่างจากขอบกรอบ</span></div>');
@@ -1886,6 +2097,11 @@ function fillItem(f) {
   const v = valOf(f);
   const it = h(`<div class="fill-item" data-name="${esc(f.name)}"><div class="lbl">${icon(TYPES[f.type].icon)}<span>${esc(f.name)}</span>${f.required ? '<span class="req">*</span>' : ''}</div></div>`);
   let ctl;
+  if (f.formula) {
+    // ช่องสูตร: แสดงผลคำนวณอย่างเดียว
+    it.appendChild(h(`<div class="fx-readonly" title="${esc(f.formula)}"><b>ƒ</b><span data-ro>${esc(v || '—')}</span></div>`));
+    return it;
+  }
   if (f.type === 'checkbox') {
     ctl = h(`<label class="f inline"><input type="checkbox" class="switch" data-ctl ${truthy(v) ? 'checked' : ''}> <span>ติ๊ก</span></label>`);
     ctl.querySelector('input').onchange = (e) => setValue(f.name, e.target.checked ? '1' : '', 'list');
@@ -1930,7 +2146,7 @@ function renderDataPanel(body) {
     body.appendChild(sec);
     return;
   }
-  const names = uniqueFields().map((f) => f.name);
+  const names = uniqueFields().filter((f) => !f.formula).map((f) => f.name);
   m.map = autoMap(names, m.headers, m.map || {});
   const n = m.rows.length;
   S.recIndex = clamp(S.recIndex || 0, 0, n - 1);
@@ -1971,14 +2187,14 @@ function valuesFromRow(row, map, base = {}) {
   const out = { ...base };
   for (const f of uniqueFields()) {
     const col = map[f.name];
-    if (!col) continue;
+    if (!col || f.formula) continue;
     const raw = row[col] ?? '';
     if (f.type === 'checkbox') out[f.name] = truthy(raw) ? '1' : '';
     else if (f.type === 'date') out[f.name] = parseDateLoose(raw) || raw;
     else if (f.type === 'signature') out[f.name] = /^data:image\//.test(raw) ? raw : '';
     else out[f.name] = raw;
   }
-  return out;
+  return computeAll(S.doc.fields, out).values; // ช่องสูตรคำนวณจากข้อมูลแถวนั้น
 }
 
 function applyRecord(i) {
@@ -1992,7 +2208,7 @@ function applyRecord(i) {
 function loadMergeText(text, source) {
   const { headers, rows } = parseDelimited(text);
   if (!headers.length || !rows.length) { toast('ไม่พบข้อมูล — ต้องมีแถวหัวคอลัมน์และข้อมูลอย่างน้อย 1 แถว', { type: 'err' }); return; }
-  S.doc.merge = { headers, rows, map: autoMap(uniqueFields().map((f) => f.name), headers, S.doc.merge?.map || {}), source };
+  S.doc.merge = { headers, rows, map: autoMap(uniqueFields().filter((f) => !f.formula).map((f) => f.name), headers, S.doc.merge?.map || {}), source };
   S.fillTab = 'data';
   if (S.mode !== 'fill') setMode('fill');
   applyRecord(0);
@@ -2066,6 +2282,7 @@ async function openExportDialog(preset) {
 }
 
 async function runExport(opt, bm, preview) {
+  recompute(false);
   const name = safeName(S.doc.name);
   const base = { pdfBytes: S.bytes, pages: S.pages, fields: S.doc.fields.map(styled), removeNames: S.doc.importedNames || [] };
   const b = busy('กำลังสร้าง PDF…');
@@ -2372,6 +2589,7 @@ function onKey(e) {
   if (mod && k === 'd') { e.preventDefault(); duplicateSel(true); return; }
   if (mod && k === 'a') { e.preventDefault(); S.sel = new Set(S.doc.fields.map((f) => f.id)); renderAllFields(); renderPanel(); return; }
   if (k === 'delete' || k === 'backspace') { e.preventDefault(); deleteSel(); return; }
+  if (k === 'escape' && S.pick) { endPick(); return; }
   if (k === 'escape') { if (S.sel.size) { S.sel.clear(); renderAllFields(); renderPanel(); } else setTool('select'); return; }
   const step = e.shiftKey ? 10 : e.altKey ? 0.2 : 1;
   if (k.startsWith('arrow') && S.sel.size) {

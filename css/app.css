@@ -404,3 +404,24 @@ body.mode-design .fld .h { border-color: rgb(var(--fc)); }
 .tool[data-tool="checkbox"] svg.i { color: rgb(22 163 74); }
 .tool[data-tool="date"] svg.i { color: rgb(234 88 12); }
 .tool[data-tool="signature"] svg.i { color: rgb(147 51 234); }
+
+/* ---------- สูตรคำนวณ ---------- */
+.mono { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; }
+textarea.inp.mono { font-size: 13.5px; min-height: 54px; }
+.fx-status { font-size: 13px; color: var(--muted); padding: 2px 2px 0; }
+.fx-status.ok { color: var(--ok); font-weight: 700; }
+.fx-status.bad { color: var(--danger); }
+.fld-fx {
+  position: absolute; right: -1px; top: -1px; transform: translate(40%, -45%); z-index: 3; pointer-events: none;
+  width: 15px; height: 15px; border-radius: 50%; display: grid; place-items: center;
+  font: italic 700 10.5px/1 Georgia, serif; color: #fff; background: rgb(var(--fc, 37 99 235));
+}
+body.mode-fill .fld-fx { opacity: .55; transform: translate(40%, -45%) scale(.85); }
+body.mode-fill .fld.fx { cursor: default; background: rgba(24, 135, 90, .07); }
+.fld.fx-err { outline: 2px solid var(--danger) !important; }
+.fld.fx-err .fld-fx { background: var(--danger); }
+body.picking .fld { cursor: copy !important; }
+body.picking .fld:hover { outline: 2px dashed var(--accent) !important; outline-offset: 1px; }
+body.picking .overlay { cursor: default; }
+.fx-readonly { display: flex; gap: 8px; align-items: center; padding: 6px 10px; border-radius: 8px; background: var(--surface-2); font-variant-numeric: tabular-nums; }
+.fx-readonly b { font: italic 700 13px Georgia, serif; color: var(--ok); }
